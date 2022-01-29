@@ -1,0 +1,147 @@
+---
+title: "NLP project - Bartomeu Ramis"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+```{r}
+library(keras)
+library(dplyr)
+library(ggplot2)
+library(tm)
+library(corpus)
+library(wordcloud)
+require(quanteda)
+require(quanteda.textmodels)
+library(quanteda.textplots)
+require(caret)
+```
+
+
+Load data set
+This data set includes 23486 rows and 10 feature variables. Each row corresponds to a customer review, and includes the variables:
+
+    Clothing ID: Integer Categorical variable that refers to the specific piece being reviewed.
+    Age: Positive Integer variable of the reviewers age.
+    Title: String variable for the title of the review.
+    Review Text: String variable for the review body.
+    Rating: Positive Ordinal Integer variable for the product score granted by the customer from 1 Worst, to 5 Best.
+    Recommended IND: Binary variable stating where the customer recommends the product where 1 is recommended, 0 is not recommended.
+    Positive Feedback Count: Positive Integer documenting the number of other customers who found this review positive.
+    Division Name: Categorical name of the product high level division.
+    Department Name: Categorical name of the product department name.
+    Class Name: Categorical name of the product class name.
+    
+```{r}
+data = read.csv("Womens Clothing E-Commerce Reviews.csv", header=TRUE)
+head(data)
+```
+
+So, first of all, lets drop those columns that we wont be needing. 
+- Clothing ID could be useful if we were interested in which clothes have better opinions, but in our case, we don't really care. 
+- Age is another piece of information that, for our purpose, we don't really need.
+- Rating would be extremely useful if we had not the recommend IND. However, we will keep it, just in case. 
+- Positive feedback can also be omitted, given the fact that represents the opinion of other customers on the review, and gives no insight into the review's expressed opinions. 
+- And finally, Division Name, Department Name and Class name wont bring any useful information for our objectives.
+
+```{r}
+data = subset(data, select=c(X, Title, Review.Text, Rating, Recommended.IND))
+names(data)[names(data) == "X"] <- "id"
+names(data)[names(data) == "Review.Text"] <- "Text"
+names(data)[names(data) == "Recommended.IND"] <- "Recommend"
+summary(data)
+```
+The title of the review has also some key words that will be quite helpful to determinate the "feelings", so in order to simplify the learning process we will merge the titled and the review text in a new column named "all_text".
+```{r}
+data$all_text <-paste(data$Title,data$Text, sep=" ")
+head(data)
+```
+lets look for null values
+```{r}
+summary(data)
+sum(is.na(data))
+sum(is.na(data$all_text))
+sum(is.na(data$Recommend))
+```
+It seem that the data is already clean from missing values.
+Next let's look for outliers or non valid values.
+```{r}
+sum(data$Recommend > 1 | data$Recommend < 0)
+sum(data$Recommend < 1 & data$Recommend > 0)
+ggplot(data, aes(x=data$Recommend)) + 
+  geom_histogram()
+sum(data$Recommend == 0.75)
+ggplot(data, aes(x=data$Rating)) + 
+  geom_histogram()
+```
+Text clearing: normalization, removing non-letter characters, removing stopword and stemming (if possible)
+```{r}
+#Not using quanteda
+#documents <- Corpus(VectorSource(data$all_text))
+#documents = tm_map(documents, content_transformer(tolower))
+#documents = tm_map(documents, removePunctuation)
+#documents = tm_map(documents, removeWords, stopwords("english"))
+#tokens = text_tokens(documents, stemmer = "en") 
+#data$tokens = tokens
+summary(data$corpus <- corpus(data$all_text),10)
+data$tokens = tokens(data$corpus, remove_numbers = TRUE, remove_punct = TRUE, remove_separators = TRUE)
+data$dfm = dfm(data$tokens, remove = stopwords("english"), tolower=TRUE, stem = TRUE)
+```
+```{r}
+topfeatures(data$dfm, 20) # 20 most frequent words
+set.seed(100)
+textplot_wordcloud(data$dfm, random_order = FALSE,
+                  rotation = .25,
+                  color = RColorBrewer::brewer.pal(8, "Dark2"))
+
+```
+
+
+```{r}
+set.seed(222)
+train_index <- createDataPartition(data$id, p = .8, list = FALSE, times = 1)
+train <- subset(data, data$id %in% train_index)
+`%notin%` <- Negate(`%in%`)
+test <- subset(data, data$id %notin% train_index)
+```
+
+
+```{r}
+#Naive Bayes text model with prior distribution on text set to 'termfreq'
+nb_model <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="termfreq")
+summary(nb_model)
+
+prediction = predict(nb_model, newdata = test$dfm)
+sum(prediction == test$Recommend)/count(test)
+```
+```{r}
+#Naive Bayes text model with prior distribution on text set to 'uniform'
+nb_model_uniform <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="uniform")
+
+prediction = predict(nb_model_uniform, newdata = test$dfm)
+sum(prediction == test$Recommend)/count(test)
+```
+```{r}
+#Naive Bayes text model with prior distribution on text set to 'docfreq'
+nb_model_docfreq <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="docfreq")
+
+prediction = predict(nb_model_docfreq, newdata = test$dfm)
+sum(prediction == test$Recommend)/count(test)
+```
+```{r}
+ws_model_linear = textmodel_wordscores(train$dfm, train$Recommend, scale ="logit", smooth = 1)
+
+prediction = predict(ws_model_linear, newdata = test$dfm)
+sum(prediction == test$Recommend)/count(test)
+```
+
+
+
+#References
+https://www.kaggle.com/nicapotato/womens-ecommerce-clothing-reviews
+https://www.marsja.se/how-to-concatenate-two-columns-or-more-in-r-stringr-tidyr/
+https://discuss.analyticsvidhya.com/t/how-to-count-the-missing-value-in-r/2949/4
+https://www.r-graph-gallery.com/index.html
+https://www.r-bloggers.com/2021/05/sentiment-analysis-in-r-3/
+https://cran.r-project.org/web/packages/corpus/vignettes/stemmer.html
+https://quanteda.io/articles/quickstart.html#extracting-features-from-a-corpus-1    
