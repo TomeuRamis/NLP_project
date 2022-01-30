@@ -1,10 +1,12 @@
 ---
 title: "NLP project - Bartomeu Ramis"
 output:
+  html_document:
+    df_print: paged
   pdf_document: default
   html_notebook: default
 ---
-```{r, warning=FALSE}
+```{r, message = FALSE, warning = FALSE}
 library(keras)
 library(dplyr)
 library(ggplot2)
@@ -17,34 +19,37 @@ library(quanteda.textplots)
 require(caret)
 ```
 
-
-Load data set
+# Definition of the problem and the data
 This data set includes 23486 rows and 10 feature variables. Each row corresponds to a customer review, and includes the variables:
 
-    Clothing ID: Integer Categorical variable that refers to the specific piece being reviewed.
-    Age: Positive Integer variable of the reviewers age.
-    Title: String variable for the title of the review.
-    Review Text: String variable for the review body.
-    Rating: Positive Ordinal Integer variable for the product score granted by the customer from 1 Worst, to 5 Best.
-    Recommended IND: Binary variable stating where the customer recommends the product where 1 is recommended, 0 is not recommended.
-    Positive Feedback Count: Positive Integer documenting the number of other customers who found this review positive.
-    Division Name: Categorical name of the product high level division.
-    Department Name: Categorical name of the product department name.
-    Class Name: Categorical name of the product class name.
+-Clothing ID: Integer Categorical variable that refers to the specific piece being reviewed.
+-Age: Positive Integer variable of the reviewers age.
+-Title: String variable for the title of the review.
+-Review Text: String variable for the review body.
+-Rating: Positive Ordinal Integer variable for the product score granted by the customer from 1 Worst, to 5 Best.
+-Recommended IND: Binary variable stating where the customer recommends the product where 1 is recommended, 0 is not recommended.
+-Positive Feedback Count: Positive Integer documenting the number of other customers who found this review positive.
+-Division Name: Categorical name of the product high level division.
+-Department Name: Categorical name of the product department name.
+-Class Name: Categorical name of the product class name.
     
 ```{r}
 set.seed(222)
 data = read.csv("Womens Clothing E-Commerce Reviews.csv", header=TRUE)
 head(data)
 ```
+## Objetive
+Our objective with this data set, is to create a NLP model, that using the review text from a customer, can predict if that costumer was satisfied or not with it's purchase. In our case, we will use de Recommended value as an indicator of the happiness of the customer.
 
+# Data clearing
 So, first of all, lets drop those columns that we wont be needing. 
 - Clothing ID could be useful if we were interested in which clothes have better opinions, but in our case, we don't really care. 
-- Age is another piece of information that, for our purpose, we don't really need.
-- Rating would be extremely useful if we had not the recommend IND. However, we will keep it, just in case. 
+- Age is another piece of information that, for our purpose, we don't  need.
+- Rating would be extremely useful if we had not the recommend IND. However, we will keep it, just in case.
 - Positive feedback can also be omitted, given the fact that represents the opinion of other customers on the review, and gives no insight into the review's expressed opinions. 
 - And finally, Division Name, Department Name and Class name wont bring any useful information for our objectives.
 
+Also, we will change the names of some columns to be more intuitive and usable
 ```{r}
 data = subset(data, select=c(X, Title, Review.Text, Rating, Recommended.IND))
 names(data)[names(data) == "X"] <- "id"
@@ -52,12 +57,13 @@ names(data)[names(data) == "Review.Text"] <- "Text"
 names(data)[names(data) == "Recommended.IND"] <- "Recommend"
 summary(data)
 ```
-The title of the review has also some key words that will be quite helpful to determinate the "feelings", so in order to simplify the learning process we will merge the titled and the review text in a new column named "all_text".
+The title of the review has also some key words that will be quite helpful to determinate the "feelings" of the customer. So in order to simplify the learning process we will merge the titled and the review text in a new column named "all_text", and we will drop the "title" and "text" from our data set to make it more lightweight.
 ```{r}
 data$all_text <-paste(data$Title,data$Text, sep=" ")
+data = subset(data, select=c(id, Rating, Recommend, all_text))
 head(data)
 ```
-lets look for null values
+Now, let's look for null values.
 ```{r}
 summary(data)
 cat("number of na/nan values: ", sum(is.na(data)),"\n")
@@ -71,7 +77,9 @@ cat("number of values bigger than 1 or smaller than 0 for Recommend: ", sum(data
 cat("number of values smaller than 1 and bigger than 0 for Recommend: ",sum(data$Recommend < 1 & data$Recommend > 0), "\n")
 ggplot(data, aes(x=Rating)) + geom_histogram(color="darkblue", fill="lightblue")
 ```
-#Exploratory analisis
+As we can see, all values seem to correspond to their intended meanings, with no outliers or invalid values (for example a Rating of -1). Also, with the histogram we are starting to visualise and explore the data, wich comes next.
+
+# Exploratory analisis
 ```{r}
 df <- data.frame(
   group = c("1", "2", "3", "4", "5"),
@@ -80,6 +88,8 @@ df <- data.frame(
  ggplot(df, aes(x="", y=value, fill=group)) + geom_bar(width = 1, stat = "identity")+ coord_polar("y", start=0)+ scale_fill_brewer(palette="Blues")+
   theme_minimal()
 ```
+
+We can see that most of the customers liked their products and are satisfied. Almost 2 thirds of the reviews have a rating of 4 or bigger. This can hit at the fact that most customers would recommend the product purchased.
 ```{r}
 df <- data.frame(
   group = c("recommends", "not recommend"),
@@ -88,7 +98,11 @@ df <- data.frame(
  ggplot(df, aes(x="", y=value, fill=group)) + geom_bar(width = 1, stat = "identity")+ coord_polar("y", start=0)+ scale_fill_brewer(palette="Reds")+
   theme_minimal()
 ```
-# Text clearing: normalization, removing non-letter characters, removing stopwords and stemming 
+
+Confirming our past hypothesis, clearly, more customers recommended the clothes in front of the less than a third of customers that did not. This will be a problem, because we would like balanced data, where we have a 50/50 split between happy and not so happy customers.
+
+# Text preprocessing: normalization, removing non-letter characters, removing stopwords and stemming 
+Now that we have a general idea of the distribution of the reviews let's normalize, remove "wierd" characters, and eliminate those words that bring no useful information (stopwords)
 ```{r}
 summary(data$corpus <- corpus(data$all_text),10)
 data$tokens = tokens(data$corpus, remove_numbers = TRUE, remove_punct = TRUE, remove_separators = TRUE)
@@ -96,6 +110,10 @@ data$tokens = tokens(data$corpus, remove_numbers = TRUE, remove_punct = TRUE, re
 data$dfm = dfm(data$tokens, tolower=TRUE) %>% dfm_remove( stopwords_en) %>% dfm_wordstem()
 summary(data$dfm)
 ```
+With our Quanteda functions we can convert the text into a series of tokens, and in turn, those tokens into a Document-Feature Matrix, which will be the data used by the models.
+Our DFM, contains all words, with al characters converted to lowercase, without stopwords and stemmed. Stemming is the process of converting a word into it's base form, facilitating the model learning process.
+
+Let's see graphically our DFM information, like which words are more common.
 ```{r}
 topfeatures(data$dfm, 20) # 20 most frequent words
 textplot_wordcloud(data$dfm, random_order = FALSE,
@@ -104,7 +122,10 @@ textplot_wordcloud(data$dfm, random_order = FALSE,
 
 ```
 
+Intuitively, words like "dress", "top" or "size" are very common due to the nature of our data. Other words like "love" or "perfect" indicate, again, that most of those reviews are positive; menwhile, words like "return", indicating a desire to return the product, are much less common.
 
+# Model training
+First, we will be spliting our data into train and test set. About 80% of the reviews will be used for training. 
 ```{r}
 train_index <- createDataPartition(data$id, p = .8, list = FALSE, times = 1)
 train <- subset(data, data$id %in% train_index)
@@ -112,30 +133,33 @@ train <- subset(data, data$id %in% train_index)
 test <- subset(data, data$id %notin% train_index)
 ```
 
-
+We will be using the Naive Bayes model provided by Quanteda.
+One of the parameters of that model is prior. So we will test all 3 possible options for that parameter to get the best possible result.
 ```{r}
 #Naive Bayes text model with prior distribution on text set to 'termfreq'
 nb_model <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="termfreq")
 summary(nb_model)
 
 prediction = predict(nb_model, newdata = test$dfm)
-sum(prediction == test$Recommend)/count(test)
+cat("Accuaracy of the termfreq model: ",(sum(prediction == test$Recommend)/count(test))$n)
 ```
 ```{r}
 #Naive Bayes text model with prior distribution on text set to 'uniform'
 nb_model_uniform <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="uniform")
 
 prediction = predict(nb_model_uniform, newdata = test$dfm)
-sum(prediction == test$Recommend)/count(test)
+cat("Accuaracy of the termfreq model: ",(sum(prediction == test$Recommend)/count(test))$n)
 ```
 ```{r}
 #Naive Bayes text model with prior distribution on text set to 'docfreq'
 nb_model_docfreq <- textmodel_nb(train$dfm, train$Recommend, smooth=1, prior="docfreq")
 
 prediction = predict(nb_model_docfreq, newdata = test$dfm)
-sum(prediction == test$Recommend)/count(test)
+cat("Accuaracy of the termfreq model: ",(sum(prediction == test$Recommend)/count(test))$n)
 ```
+As we see, according to the accuaracy measure, the "docfreq" option allows for a slight advantage in front of the others.
 
+Now, as we said earlier, this dataset is not balanced. So to corret this, we will make a subset of the data that includes all negative reviews and the same amount of positive reviews, in order to get a perfect 50% split.
 ```{r}
 #separate positivo from negative
 data_reduced <- subset(data, select=-c(corpus,tokens,dfm))
@@ -147,7 +171,7 @@ reduced_pos <- pos[sample(1:nrow(pos), size = i), ]
 
 balanced_data = bind_rows(reduced_pos, neg)
 ```
-
+To create the balanced_data we needed to remove de corpus, tokens and dfm columns. Let's create them back.
 ```{r}
 df <- data.frame(
   group = c("recommends", "not recommend"),
@@ -155,6 +179,9 @@ df <- data.frame(
   )
  ggplot(df, aes(x="", y=value, fill=group)) + geom_bar(width = 1, stat = "identity") + coord_polar("y", start=0) + scale_fill_brewer(palette="Reds") + theme_minimal()
 ```
+
+As we see, we got that split, where half of the reviews are positive, and half are negative.
+Lets create again the train and test set and test some models.
 ```{r}
 balanced_data$corpus <- corpus(balanced_data$all_text)
 balanced_data$tokens = tokens(balanced_data$corpus, remove_numbers = TRUE, remove_punct = TRUE, remove_separators = TRUE)
@@ -170,8 +197,12 @@ nb_model_b <- textmodel_nb(train_b$dfm, train_b$Recommend, smooth=1, prior="docf
 summary(nb_model_b)
 
 prediction = predict(nb_model_b, newdata = test_b$dfm)
-sum(prediction == test_b$Recommend)/count(test_b)
+acc = (sum(prediction == test_b$Recommend))/count(test_b)
+cat("Accuaracy of the termfreq model: ",acc$n)
 ```
+The accuracy decreased. This is due to the fact that now, that the data is balanced, it's quite harder to predict correctly values. However, this allows for a more "reliable" model, less "overfitted" to our unbalanced data, and more fit to work in the real world.
+
+Let's use the confusion matrix to evaluate the model obtained.
 ```{r}
 confusionMatrix(prediction, factor(test_b$Recommend))
 ```
@@ -180,14 +211,21 @@ precision <- 679/(679+97)
 recall <- 679/(679+138)
 cat("precision: ",precision,", recall: ",recall)
 ```
+As we see, our model still holds a acc of 0.857, which is still quite high. Also, the precision and recall measures, together with the confusion matrix indicate that the model is quite balanced, meaning that it doesn't fail more at False Positives or at False Negatives, instead, it fails, more or less, the same amount on both cases. 
 
+# References
+- https://www.kaggle.com/nicapotato/womens-ecommerce-clothing-reviews
 
-#References
-https://www.kaggle.com/nicapotato/womens-ecommerce-clothing-reviews
-https://www.marsja.se/how-to-concatenate-two-columns-or-more-in-r-stringr-tidyr/
-https://discuss.analyticsvidhya.com/t/how-to-count-the-missing-value-in-r/2949/4
-https://www.r-graph-gallery.com/index.html
-https://www.r-bloggers.com/2021/05/sentiment-analysis-in-r-3/
-https://cran.r-project.org/web/packages/corpus/vignettes/stemmer.html
-https://quanteda.io/articles/quickstart.html#extracting-features-from-a-corpus-1   
-https://www.journaldev.com/46732/confusion-matrix-in-r
+- https://www.marsja.se/how-to-concatenate-two-columns-or-more-in-r-stringr-tidyr/
+
+- https://discuss.analyticsvidhya.com/t/how-to-count-the-missing-value-in-r/2949/4
+
+- https://www.r-graph-gallery.com/index.html
+
+- https://www.r-bloggers.com/2021/05/sentiment-analysis-in-r-3/
+
+- https://cran.r-project.org/web/packages/corpus/vignettes/stemmer.html
+
+- https://quanteda.io/articles/quickstart.html#extracting-features-from-a-corpus-1   
+
+- https://www.journaldev.com/46732/confusion-matrix-in-r
