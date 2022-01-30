@@ -74,6 +74,8 @@ sum(data$Recommend == 0.75)
 ggplot(data, aes(x=data$Rating)) + 
   geom_histogram()
 ```
+#Exploratory analisis
+
 Text clearing: normalization, removing non-letter characters, removing stopword and stemming (if possible)
 ```{r}
 #Not using quanteda
@@ -129,13 +131,32 @@ prediction = predict(nb_model_docfreq, newdata = test$dfm)
 sum(prediction == test$Recommend)/count(test)
 ```
 ```{r}
-ws_model_linear = textmodel_wordscores(train$dfm, train$Recommend, scale ="logit", smooth = 1)
+#separate positivo from negative
+data_reduced <- subset(data, select=-c(corpus,tokens,dfm))
+pos <- data_reduced[data_reduced$Recommend==1,]
+neg <- data_reduced[data_reduced$Recommend==0,]
 
-prediction = predict(ws_model_linear, newdata = test$dfm)
-sum(prediction == test$Recommend)/count(test)
+i = as.integer(count(neg)$n[1])
+reduced_pos <- pos[sample(1:nrow(pos), size = i), ]   
+
+balanced_data = bind_rows(reduced_pos, neg)
+
+balanced_data$corpus <- corpus(balanced_data$all_text)
+balanced_data$tokens = tokens(balanced_data$corpus, remove_numbers = TRUE, remove_punct = TRUE, remove_separators = TRUE)
+balanced_data$dfm = dfm(balanced_data$tokens, remove = stopwords("english"), tolower=TRUE, stem = TRUE)
+
+train_index_b <- createDataPartition(balanced_data$id, p = .8, list = FALSE, times = 1)
+train_b <- subset(balanced_data, balanced_data$id %in% train_index)
+test_b <- subset(balanced_data, balanced_data$id %notin% train_index)
 ```
+```{r}
+#Naive Bayes text model with prior distribution on text set to 'termfreq'
+nb_model_b <- textmodel_nb(train_b$dfm, train_b$Recommend, smooth=1, prior="termfreq")
+summary(nb_model_b)
 
-
+prediction = predict(nb_model_b, newdata = test_b$dfm)
+sum(prediction == test_b$Recommend)/count(test_b)
+```
 
 #References
 https://www.kaggle.com/nicapotato/womens-ecommerce-clothing-reviews
