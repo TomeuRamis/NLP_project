@@ -183,7 +183,18 @@ require(caret)</code></pre>
 <div id="definition-of-the-problem-and-the-data" class="section level1">
 <h1>Definition of the problem and the data</h1>
 <p>This data set includes 23486 rows and 10 feature variables. Each row corresponds to a customer review, and includes the variables:</p>
-<p>-Clothing ID: Integer Categorical variable that refers to the specific piece being reviewed. -Age: Positive Integer variable of the reviewers age. -Title: String variable for the title of the review. -Review Text: String variable for the review body. -Rating: Positive Ordinal Integer variable for the product score granted by the customer from 1 Worst, to 5 Best. -Recommended IND: Binary variable stating where the customer recommends the product where 1 is recommended, 0 is not recommended. -Positive Feedback Count: Positive Integer documenting the number of other customers who found this review positive. -Division Name: Categorical name of the product high level division. -Department Name: Categorical name of the product department name. -Class Name: Categorical name of the product class name.</p>
+<ul>
+<li>Clothing ID: Integer Categorical variable that refers to the specific piece being reviewed.</li>
+<li>Age: Positive Integer variable of the reviewers age.</li>
+<li>Title: String variable for the title of the review.</li>
+<li>Review Text: String variable for the review body.</li>
+<li>Rating: Positive Ordinal Integer variable for the product score granted by the customer from 1 Worst, to 5 Best.</li>
+<li>Recommended IND: Binary variable stating where the customer recommends the product where 1 is recommended, 0 is not recommended.</li>
+<li>Positive Feedback Count: Positive Integer documenting the number of other customers who found this review positive.</li>
+<li>Division Name: Categorical name of the product high level division.</li>
+<li>Department Name: Categorical name of the product department name.</li>
+<li>Class Name: Categorical name of the product class name.</li>
+</ul>
 <pre class="r"><code>set.seed(222)
 data = read.csv(&quot;Womens Clothing E-Commerce Reviews.csv&quot;, header=TRUE)
 head(data)</code></pre>
@@ -199,7 +210,14 @@ head(data)</code></pre>
 </div>
 <div id="data-clearing" class="section level1">
 <h1>Data clearing</h1>
-<p>So, first of all, lets drop those columns that we wont be needing. - Clothing ID could be useful if we were interested in which clothes have better opinions, but in our case, we don’t really care. - Age is another piece of information that, for our purpose, we don’t need. - Rating would be extremely useful if we had not the recommend IND. However, we will keep it, just in case. - Positive feedback can also be omitted, given the fact that represents the opinion of other customers on the review, and gives no insight into the review’s expressed opinions. - And finally, Division Name, Department Name and Class name wont bring any useful information for our objectives.</p>
+<p>So, first of all, lets drop those columns that we wont be needing.</p>
+<ul>
+<li>Clothing ID could be useful if we were interested in which clothes have better opinions, but in our case, we don’t really care.</li>
+<li>Age is another piece of information that, for our purpose, we don’t need.</li>
+<li>Rating would be extremely useful if we had not the recommend IND. However, we will keep it, just in case.</li>
+<li>Positive feedback can also be omitted, given the fact that represents the opinion of other customers on the review, and gives no insight into the review’s expressed opinions.</li>
+<li>And finally, Division Name, Department Name and Class name wont bring any useful information for our objectives.</li>
+</ul>
 <p>Also, we will change the names of some columns to be more intuitive and usable</p>
 <pre class="r"><code>data = subset(data, select=c(X, Title, Review.Text, Rating, Recommended.IND))
 names(data)[names(data) == &quot;X&quot;] &lt;- &quot;id&quot;
